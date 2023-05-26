@@ -99,9 +99,13 @@ class AppAuthController extends ResourceController {
   Future<Response> refreshToken(@Bind.path('refresh') String refreshToken) async {
     try {
       final id = AppUtils.getIdFromToken(refreshToken);
-      await _updateTokens(id, managedContext);
       final user = await managedContext.fetchObjectWithID<User>(id);
-      return Response.ok(AppResponseModel(data: user?.backing.contents, message: 'Tokens update success'));
+      if (user?.refreshToken != refreshToken) {
+        return Response.unauthorized(body: AppResponseModel(message: 'Invalid token'));
+      } else {
+        await _updateTokens(id, managedContext);
+        return Response.ok(AppResponseModel(data: user?.backing.contents, message: 'Tokens update success'));
+      }
     } catch (error) {
       return Response.serverError(body: AppResponseModel(message: error.toString()));
     }
