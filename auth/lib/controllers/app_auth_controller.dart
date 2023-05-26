@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:auth/models/app_response_model.dart';
 import 'package:auth/models/user_model.dart';
+import 'package:auth/utils/app_utils.dart';
 import 'package:conduit_core/conduit_core.dart';
 import 'package:jaguar_jwt/jaguar_jwt.dart';
 
@@ -19,15 +20,28 @@ class AppAuthController extends ResourceController {
       );
     }
 
-    final User fetchedUser = User();
-    return Response.ok(AppResponseModel(
-      data: {
-        'id': fetchedUser.id,
-        'refreshToken': fetchedUser.refreshToken,
-        'accessToken': fetchedUser.accessToken,
-      },
-      message: 'Auth success',
-    ).toJson());
+    try {
+      final qFindUser = Query<User>(managedContext)
+        ..where((table) => table.username).equalTo(user.username)
+        ..returningProperties((table) => [table.id, table.salt, table.hashPassword]);
+
+      final findUser = await qFindUser.fetchOne();
+
+      if (findUser == null) {
+        throw QueryException.input('User not found', []);
+      }
+      final requestHashPassword = generatePasswordHash(user.password ?? '', findUser.salt ?? '');
+
+      if (requestHashPassword == findUser.hashPassword) {
+        _updateTokens(findUser.id ?? -1, managedContext);
+        final newUser = await managedContext.fetchObjectWithID<User>(findUser.id);
+        return Response.ok(AppResponseModel(data: newUser?.backing.contents, message: 'Auth success'));
+      } else {
+        throw QueryException.input('Invalid password', []);
+      }
+    } on QueryException catch (error) {
+      return Response.serverError(body: AppResponseModel(message: error.message));
+    }
   }
 
   /// Sign up.
@@ -55,14 +69,7 @@ class AppAuthController extends ResourceController {
 
         id = createdUser.asMap()['id'];
 
-        final Map<String, dynamic> tokens = _getTokens(id);
-
-        final qUpdateTokens = Query<User>(transaction)
-          ..where((user) => user.id).equalTo(id)
-          ..values.accessToken = tokens['access']
-          ..values.refreshToken = tokens['refresh'];
-
-        await qUpdateTokens.updateOne();
+        await _updateTokens(id, transaction);
       });
 
       final userData = await managedContext.fetchObjectWithID<User>(id);
@@ -76,18 +83,28 @@ class AppAuthController extends ResourceController {
     }
   }
 
+  Future<void> _updateTokens(int id, ManagedContext transaction) async {
+    final Map<String, dynamic> tokens = _getTokens(id);
+
+    final qUpdateTokens = Query<User>(transaction)
+      ..where((user) => user.id).equalTo(id)
+      ..values.accessToken = tokens['access']
+      ..values.refreshToken = tokens['refresh'];
+
+    await qUpdateTokens.updateOne();
+  }
+
   /// Tokens refresh.
   @Operation.post('refresh')
   Future<Response> refreshToken(@Bind.path('refresh') String refreshToken) async {
-    final User fetchedUser = User();
-    return Response.ok(AppResponseModel(
-      data: {
-        'id': fetchedUser.id,
-        'refreshToken': fetchedUser.refreshToken,
-        'accessToken': fetchedUser.accessToken,
-      },
-      message: 'Success refreshed tokens',
-    ).toJson());
+    try {
+      final id = AppUtils.getIdFromToken(refreshToken);
+      await _updateTokens(id, managedContext);
+      final user = await managedContext.fetchObjectWithID<User>(id);
+      return Response.ok(AppResponseModel(data: user?.backing.contents, message: 'Tokens update success'));
+    } catch (error) {
+      return Response.serverError(body: AppResponseModel(message: error.toString()));
+    }
   }
 
   Map<String, dynamic> _getTokens(int id) {
