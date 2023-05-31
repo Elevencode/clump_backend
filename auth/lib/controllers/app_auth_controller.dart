@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:auth/models/app_response_model.dart';
 import 'package:auth/models/user_model.dart';
+import 'package:auth/utils/app_response.dart';
 import 'package:auth/utils/app_utils.dart';
 import 'package:conduit_core/conduit_core.dart';
 import 'package:jaguar_jwt/jaguar_jwt.dart';
@@ -35,12 +36,12 @@ class AppAuthController extends ResourceController {
       if (requestHashPassword == findUser.hashPassword) {
         _updateTokens(findUser.id ?? -1, managedContext);
         final newUser = await managedContext.fetchObjectWithID<User>(findUser.id);
-        return Response.ok(AppResponseModel(data: newUser?.backing.contents, message: 'Auth success'));
+        return AppResponse.ok(body: newUser?.backing.contents, message: 'Auth success');
       } else {
         throw QueryException.input('Invalid password', []);
       }
-    } on QueryException catch (error) {
-      return Response.serverError(body: AppResponseModel(message: error.message));
+    } catch (error) {
+      return AppResponse.serverError(error, message: 'Auth error');
     }
   }
 
@@ -74,12 +75,12 @@ class AppAuthController extends ResourceController {
 
       final userData = await managedContext.fetchObjectWithID<User>(id);
 
-      return Response.ok(AppResponseModel(
-        data: userData?.backing.contents,
+      return AppResponse.ok(
+        body: userData?.backing.contents,
         message: 'Sign up success',
-      ));
-    } on QueryException catch (error) {
-      return Response.serverError(body: AppResponseModel(message: error.message));
+      );
+    } catch (error) {
+      return AppResponse.serverError(error, message: 'Sign up error');
     }
   }
 
@@ -104,10 +105,10 @@ class AppAuthController extends ResourceController {
         return Response.unauthorized(body: AppResponseModel(message: 'Invalid token'));
       } else {
         await _updateTokens(id, managedContext);
-        return Response.ok(AppResponseModel(data: user?.backing.contents, message: 'Tokens update success'));
+        return AppResponse.ok(body: user?.backing.contents, message: 'Tokens update success');
       }
     } catch (error) {
-      return Response.serverError(body: AppResponseModel(message: error.toString()));
+      return AppResponse.serverError(error, message: 'Refresh token error');
     }
   }
 
