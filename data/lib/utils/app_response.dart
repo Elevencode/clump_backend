@@ -9,6 +9,11 @@ class AppResponse extends Response {
   AppResponse.badRequest({String? message})
       : super.badRequest(body: AppResponseModel(message: message ?? 'Bad request'));
 
+  AppResponse.notFound({String? message}) : super.notFound(body: AppResponseModel(message: message ?? 'Not found'));
+
+  AppResponse.forbidden({String? message})
+      : super.forbidden(body: AppResponseModel(message: message ?? 'Forbidden request'));
+
   AppResponse.ok({dynamic body, String? message}) : super.ok(AppResponseModel(data: body, message: message));
 
   static AppResponseModel _getResponseModel(error, String? message) {
